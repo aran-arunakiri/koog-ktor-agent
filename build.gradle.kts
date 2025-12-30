@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "tech.abstracty"
-version = "0.2.8"
+version = "0.2.9"
 
 repositories {
     mavenCentral()
@@ -35,12 +35,20 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.0")
     testImplementation("io.mockk:mockk:1.13.8")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+}
+
+tasks.register<JavaExec>("devCli") {
+    group = "application"
+    description = "Run the dev CLI for experimenting with strategies."
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("tech.abstracty.agent.dev.DevCliKt")
 }
 
 kotlin {
