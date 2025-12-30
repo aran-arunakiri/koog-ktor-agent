@@ -12,6 +12,19 @@ Reusable library for building AI agents with [Koog](https://koog.ai) and [Ktor](
 
 ## Installation
 
+### JitPack
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven { url = uri("https://jitpack.io") }
+}
+
+dependencies {
+    implementation("com.github.aran-arunakiri:koog-ktor-agent:v0.2.12")
+}
+```
+
 ### GitHub Packages
 
 Add the GitHub Packages repository to your `build.gradle.kts`:
