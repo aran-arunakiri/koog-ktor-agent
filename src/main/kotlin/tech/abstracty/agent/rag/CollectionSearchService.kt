@@ -2,6 +2,7 @@ package tech.abstracty.agent.rag
 
 import ai.koog.embeddings.local.LLMEmbedder
 import io.qdrant.client.QdrantClient
+import io.qdrant.client.grpc.JsonWithInt
 import io.qdrant.client.grpc.Points
 import io.qdrant.client.grpc.Points.SearchPoints
 import io.qdrant.client.grpc.Points.WithPayloadSelector
@@ -9,6 +10,14 @@ import kotlinx.coroutines.guava.await
 import org.slf4j.LoggerFactory
 
 typealias CollectionSearchFunction = suspend (query: String, collection: String) -> String
+
+data class SearchHit(
+    val id: String?,
+    val url: String?,
+    val page: Int?,
+    val content: String,
+    val score: Float
+)
 
 class CollectionSearchService(
     private val config: RagConfig,
@@ -31,20 +40,37 @@ class CollectionSearchService(
         query: String,
         collectionName: String
     ): String {
+        return searchInCollection(query, collectionName, formatter = ::formatSearchHits)
+    }
+
+    suspend fun searchInCollection(
+        query: String,
+        collectionName: String,
+        formatter: (List<SearchHit>) -> String,
+        noResultsMessage: String = "No relevant documents found in $collectionName.",
+        errorMessage: String = "An error occurred while searching $collectionName."
+    ): String {
         return try {
-            val queryVector = generateEmbedding(query)
-            val searchResults = executeVectorSearch(collectionName, queryVector)
-            if (searchResults.isEmpty()) {
-                return "No relevant documents found in $collectionName."
+            val hits = searchHits(query, collectionName)
+            if (hits.isEmpty()) {
+                return noResultsMessage
             }
-            val filteredResults = filterResultsByScore(searchResults)
-            if (filteredResults.isEmpty()) {
-                return "No relevant documents found in $collectionName."
-            }
-            formatSearchResults(filteredResults)
+            formatter(hits)
         } catch (e: Exception) {
             logger.error("Search failed in collection: $collectionName", e)
-            "An error occurred while searching $collectionName."
+            errorMessage
+        }
+    }
+
+    suspend fun searchHits(
+        query: String,
+        collectionName: String
+    ): List<SearchHit> {
+        val queryVector = generateEmbedding(query)
+        val searchResults = executeVectorSearch(collectionName, queryVector)
+        val filteredResults = filterResultsByScore(searchResults)
+        return filteredResults.mapIndexed { index, result ->
+            toSearchHit(result, index)
         }
     }
 
@@ -86,30 +112,40 @@ class CollectionSearchService(
         return searchResults.filter { it.score >= dynamicThreshold }
     }
 
-    private fun formatSearchResults(results: List<Points.ScoredPoint>): String {
-        val formattedResults = results.map { result ->
-            val payload = result.payloadMap
-            val pageContent = payload["page_content"]?.stringValue
-                ?: payload["text"]?.stringValue
-                ?: "Geen inhoud"
-            val metadata = payload["metadata"]?.structValue
-            val pageURL = metadata?.fieldsMap?.get("page_url")?.stringValue
-                ?: payload["url"]?.stringValue
-            val page = metadata?.fieldsMap?.get("page")?.integerValue?.toInt()
-            val score = result.score
-
-            buildString {
-                if (pageURL != null) {
-                    append("Source: $pageURL")
-                } else {
-                    append("Source: Unknown")
+    companion object {
+        fun formatSearchHits(hits: List<SearchHit>): String {
+            val formattedResults = hits.map { hit ->
+                buildString {
+                    if (hit.url != null) {
+                        append("Source: ${hit.url}")
+                    } else {
+                        append("Source: Unknown")
+                    }
+                    if (hit.page != null) append(" • Page: ${hit.page}")
+                    append("\nContent: ${hit.content}")
+                    append("\n(Score: ${String.format("%.3f", hit.score)})")
                 }
-                if (page != null) append(" • Page: $page")
-                append("\nContent: $pageContent")
-                append("\n(Score: ${String.format("%.3f", score)})")
             }
+            return formattedResults.joinToString("\n\n")
         }
+    }
 
-        return formattedResults.joinToString("\n\n")
+    private fun toSearchHit(result: Points.ScoredPoint, index: Int): SearchHit {
+        val payload = result.payloadMap
+        val content = payload["page_content"]?.stringValue
+            ?: payload["text"]?.stringValue
+            ?: "No content"
+        val metadata = payload["metadata"]?.structValue
+        val url = metadata?.fieldsMap?.get("page_url")?.stringValue
+            ?: payload["url"]?.stringValue
+        val page = metadata?.fieldsMap?.get("page")?.integerValue?.toInt()
+        val id = payload["_id"]?.stringValue ?: url ?: "source_$index"
+        return SearchHit(
+            id = id,
+            url = url,
+            page = page,
+            content = content,
+            score = result.score
+        )
     }
 }
