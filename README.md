@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.2.9")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.10")
 }
 ```
 
@@ -48,7 +48,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.2.9")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.10")
 }
 ```
 

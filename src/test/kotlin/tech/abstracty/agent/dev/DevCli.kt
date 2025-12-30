@@ -9,9 +9,16 @@ import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onToolCall
 import ai.koog.agents.core.environment.ReceivedToolResult
 import ai.koog.agents.core.environment.result
+import ai.koog.agents.core.tools.Tool
 import ai.koog.prompt.message.Message
 import kotlinx.coroutines.runBlocking
 import tech.abstracty.agent.agent.StreamingAgentBuilder
+import tech.abstracty.agent.rag.CollectionSearchService
+import tech.abstracty.agent.rag.DefaultRagClientFactory
+import tech.abstracty.agent.rag.RagConfig
+import tech.abstracty.agent.rag.tools.CachedToolDescriptionRepository
+import tech.abstracty.agent.rag.tools.DynamicSearchTool
+import tech.abstracty.agent.rag.tools.FileBasedToolDescriptionRepository
 import tech.abstracty.agent.protocol.FinishReason
 import tech.abstracty.agent.protocol.StreamBridge
 import tech.abstracty.agent.protocol.Usage
@@ -85,15 +92,59 @@ private fun createCliStrategy(bridge: StreamBridge): AIAgentGraphStrategy<String
     )
 }
 
+private fun createPlainChatStrategy(): AIAgentGraphStrategy<String, String> = strategy("plain") {
+    val nodeCallLLM by nodeLLMRequest("sendInput")
+    edge(nodeStart forwardTo nodeCallLLM)
+    edge(nodeCallLLM forwardTo nodeFinish onAssistantMessage { true })
+}
+
+private fun loadRagTools(apiKey: String): List<Tool<*, *>> {
+    val basePath = System.getenv("TOOL_DESCRIPTIONS_PATH") ?: return emptyList()
+    val tenantId = System.getenv("RAG_TENANT_ID") ?: "default"
+    val qdrantHost = System.getenv("QDRANT_HOST") ?: "localhost"
+    val qdrantPort = System.getenv("QDRANT_GRPC_PORT")?.toIntOrNull() ?: 6334
+    val embeddingModel = System.getenv("EMBEDDING_MODEL") ?: "text-embedding-3-small"
+    val topK = System.getenv("RAG_TOP_K")?.toIntOrNull() ?: 5
+
+    val ragConfig = RagConfig(
+        tenantId = tenantId,
+        qdrantHost = qdrantHost,
+        qdrantGrpcPort = qdrantPort,
+        openAIApiKey = apiKey,
+        embeddingModel = embeddingModel,
+        topK = topK
+    )
+    val clientFactory = DefaultRagClientFactory(ragConfig)
+    val searchService = CollectionSearchService(ragConfig, clientFactory)
+
+    val baseRepo = FileBasedToolDescriptionRepository(basePath)
+    val cachedRepo = CachedToolDescriptionRepository(baseRepo)
+    val descriptions = cachedRepo.getDescriptions(tenantId)
+
+    return descriptions.map { description ->
+        DynamicSearchTool(
+            toolDescription = description,
+            searchFunction = searchService::searchInCollection
+        )
+    }
+}
+
 fun main() = runBlocking {
     val apiKey = System.getenv("OPENAI_API_KEY") ?: error("OPENAI_API_KEY is required")
     val systemPrompt = System.getenv("SYSTEM_PROMPT") ?: "You are a helpful assistant."
 
     val bridge = ConsoleBridge()
+    val ragTools = loadRagTools(apiKey)
+    if (ragTools.isEmpty()) {
+        println("No RAG tools loaded. Set TOOL_DESCRIPTIONS_PATH and QDRANT_HOST/QDRANT_GRPC_PORT to enable.")
+    }
     val agent = StreamingAgentBuilder.create(bridge) {
         this.apiKey = apiKey
         this.systemPrompt = systemPrompt
-        strategy = createCliStrategy(bridge)
+        strategy = if (ragTools.isEmpty()) createPlainChatStrategy() else createCliStrategy(bridge)
+        tools {
+            ragTools.forEach { +it }
+        }
     }
 
     println("CLI ready. Type a message, or 'exit' to quit.")
