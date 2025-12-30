@@ -23,7 +23,7 @@ class DynamicSearchTool(
         requiredParameters = listOf(
             ToolParameterDescriptor(
                 name = "query",
-                description = "De zoekopdracht",
+                description = "Search query",
                 type = ToolParameterType.String
             )
         )

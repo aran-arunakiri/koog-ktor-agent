@@ -35,16 +35,16 @@ class CollectionSearchService(
             val queryVector = generateEmbedding(query)
             val searchResults = executeVectorSearch(collectionName, queryVector)
             if (searchResults.isEmpty()) {
-                return "Geen relevante documenten gevonden in $collectionName."
+                return "No relevant documents found in $collectionName."
             }
             val filteredResults = filterResultsByScore(searchResults)
             if (filteredResults.isEmpty()) {
-                return "Geen relevante documenten gevonden in $collectionName."
+                return "No relevant documents found in $collectionName."
             }
             formatSearchResults(filteredResults)
         } catch (e: Exception) {
             logger.error("Search failed in collection: $collectionName", e)
-            "Er is een fout opgetreden bij het zoeken in $collectionName."
+            "An error occurred while searching $collectionName."
         }
     }
 
@@ -100,12 +100,12 @@ class CollectionSearchService(
 
             buildString {
                 if (pageURL != null) {
-                    append("Bron: $pageURL")
+                    append("Source: $pageURL")
                 } else {
-                    append("Bron: Onbekend")
+                    append("Source: Unknown")
                 }
-                if (page != null) append(" • Pagina: $page")
-                append("\nInhoud: $pageContent")
+                if (page != null) append(" • Page: $page")
+                append("\nContent: $pageContent")
                 append("\n(Score: ${String.format("%.3f", score)})")
             }
         }
