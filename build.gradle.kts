@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "tech.abstracty"
-version = "0.1.0"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -18,25 +18,8 @@ dependencies {
     // Ktor Server
     api("io.ktor:ktor-server-core:3.2.3")
 
-    // Ktor Client
-    implementation("io.ktor:ktor-client-cio:3.2.3")
-    implementation("io.ktor:ktor-client-content-negotiation:3.2.3")
-
-    // Qdrant
-    api("io.qdrant:client:1.15.0")
-
     // Serialization
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-
-    // gRPC and Protobuf (for Qdrant)
-    implementation("io.grpc:grpc-stub:1.65.1")
-    implementation("com.google.protobuf:protobuf-java:3.25.5")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
-
-    // Web scraping (for WebSearchTool)
-    implementation("org.jsoup:jsoup:1.17.2")
-    implementation("org.apache.pdfbox:pdfbox:3.0.1")
-    implementation("com.squareup.okhttp3:okhttp:5.1.0")
 
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
