@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "tech.abstracty"
-version = "0.2.11"
+version = "0.2.12"
 
 repositories {
     mavenCentral()
@@ -49,6 +49,7 @@ tasks.register<JavaExec>("devCli") {
     description = "Run the dev CLI for experimenting with strategies."
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("tech.abstracty.agent.dev.DevCliKt")
+    standardInput = System.`in`
 }
 
 kotlin {

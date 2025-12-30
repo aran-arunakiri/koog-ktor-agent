@@ -149,6 +149,7 @@ private fun loadRagTools(apiKey: String): List<Tool<*, *>> {
 fun main() = runBlocking {
     val apiKey = System.getenv("OPENAI_API_KEY") ?: error("OPENAI_API_KEY is required")
     val systemPrompt = System.getenv("SYSTEM_PROMPT") ?: "You are a helpful assistant."
+    val debug = System.getenv("CLI_DEBUG")?.lowercase() == "true"
 
     val bridge = ConsoleBridge()
     val ragTools = loadRagTools(apiKey)
@@ -175,6 +176,13 @@ fun main() = runBlocking {
         print("> ")
         val input = readLine()?.trim() ?: break
         if (input.equals("exit", ignoreCase = true)) break
-        agent.run(input)
+        if (debug) println("[debug] sending: $input")
+        try {
+            val result = agent.run(input)
+            if (debug) println("\n[debug] result: $result")
+            bridge.onFinish(FinishReason.STOP, Usage())
+        } catch (e: Exception) {
+            bridge.onError(e.message ?: "LLM call failed")
+        }
     }
 }
