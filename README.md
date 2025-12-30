@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.2.2")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.3")
 }
 ```
 
@@ -48,7 +48,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.2.2")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.3")
 }
 ```
 
@@ -65,14 +65,15 @@ import tech.abstracty.agent.protocol.Usage
 routing {
     post("/ai/stream") {
         call.streamAssistantUI { bridge ->
-            val agent = StreamingAgentBuilder.create(bridge) {
-                apiKey = System.getenv("OPENAI_API_KEY")
-                systemPrompt = "You are a helpful assistant"
-                tools {
-                    +mySearchTool
-                    +myRagTool
-                }
-            }
+    val agent = StreamingAgentBuilder.create(bridge) {
+        apiKey = System.getenv("OPENAI_API_KEY")
+        systemPrompt = "You are a helpful assistant"
+        strategy = createChatStreamingStrategy(bridge)
+        tools {
+            +mySearchTool
+            +myRagTool
+        }
+    }
 
             agent.run(userMessage)
             bridge.onFinish(FinishReason.STOP, Usage(promptTokens = 10, completionTokens = 50))
@@ -95,6 +96,7 @@ routing {
             val agent = StreamingAgentBuilder.create(bridge) {
                 apiKey = System.getenv("OPENAI_API_KEY")
                 systemPrompt = agentConfig.systemPrompt
+                strategy = createChatStreamingStrategy(bridge)
                 tools {
                     +collectionSearchTool
                 }
