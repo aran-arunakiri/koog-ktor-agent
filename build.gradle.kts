@@ -17,9 +17,24 @@ dependencies {
 
     // Ktor Server
     api("io.ktor:ktor-server-core:3.2.3")
+    implementation("io.ktor:ktor-client-core:3.2.3")
+    implementation("io.ktor:ktor-client-cio:3.2.3")
+    implementation("io.ktor:ktor-client-content-negotiation:3.2.3")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.2.3")
 
     // Serialization
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+    // Qdrant
+    implementation("io.qdrant:client:1.15.0")
+    implementation("com.google.protobuf:protobuf-java:3.25.5")
+
+    // Web search
+    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("org.apache.pdfbox:pdfbox:3.0.1")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
 
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")

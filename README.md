@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.1.0")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.0")
 }
 ```
 
@@ -48,7 +48,7 @@ repositories {
 }
 
 dependencies {
-    implementation("tech.abstracty:koog-ktor-agent:0.1.0")
+    implementation("tech.abstracty:koog-ktor-agent:0.2.0")
 }
 ```
 
@@ -110,26 +110,30 @@ routing {
 
 ```kotlin
 import tech.abstracty.agent.rag.*
+import tech.abstracty.agent.rag.tools.*
 
 // Configure RAG
-val ragConfig = RAGConfig(
+val ragConfig = RagConfig(
     tenantId = "my-app",
     qdrantHost = "localhost",
     qdrantGrpcPort = 6334,
     openAIApiKey = System.getenv("OPENAI_API_KEY"),
-    embeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_SMALL,
+    embeddingModel = "text-embedding-3-small",
     topK = 5,
 )
 
 // Create search service
-val searchService = VectorSearchService.create(ragConfig)
+val ragClientFactory = DefaultRagClientFactory(ragConfig)
+val searchService = CollectionSearchService(ragConfig, ragClientFactory)
 
 // Load tool descriptions from JSON
-val loader = ToolDescriptionLoader("/path/to/tool_descriptions")
-val descriptions = loader.load("tenant-id")
+val loader = FileBasedToolDescriptionRepository("/path/to/tool_descriptions")
+val descriptions = loader.getDescriptions("tenant-id")
 
 // Create dynamic search tools
-val ragTools = DynamicSearchTool.createAll(descriptions, searchService)
+val ragTools = descriptions.map { description ->
+    DynamicSearchTool(description, searchService::searchInCollection)
+}
 
 // Use in agent
 StreamingAgentBuilder.create(bridge) {
