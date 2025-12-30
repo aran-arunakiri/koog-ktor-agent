@@ -24,10 +24,6 @@ class CollectionSearchService(
     private val clientFactory: RagClientFactory,
 ) {
 
-    companion object {
-        private val logger = LoggerFactory.getLogger(CollectionSearchService::class.java)
-    }
-
     private val qdrantClient: QdrantClient by lazy {
         clientFactory.createQdrantClient()
     }
@@ -113,6 +109,8 @@ class CollectionSearchService(
     }
 
     companion object {
+        private val logger = LoggerFactory.getLogger(CollectionSearchService::class.java)
+
         fun formatSearchHits(hits: List<SearchHit>): String {
             val formattedResults = hits.map { hit ->
                 buildString {
