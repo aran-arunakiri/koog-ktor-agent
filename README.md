@@ -65,15 +65,15 @@ import tech.abstracty.agent.protocol.Usage
 routing {
     post("/ai/stream") {
         call.streamAssistantUI { bridge ->
-    val agent = StreamingAgentBuilder.create(bridge) {
-        apiKey = System.getenv("OPENAI_API_KEY")
-        systemPrompt = "You are a helpful assistant"
-        strategy = createChatStreamingStrategy(bridge)
-        tools {
-            +mySearchTool
-            +myRagTool
-        }
-    }
+            val agent = StreamingAgentBuilder.create(bridge) {
+                apiKey = System.getenv("OPENAI_API_KEY")
+                systemPrompt = "You are a helpful assistant"
+                strategy = createChatStreamingStrategy(bridge)
+                tools {
+                    +mySearchTool
+                    +myRagTool
+                }
+            }
 
             agent.run(userMessage)
             bridge.onFinish(FinishReason.STOP, Usage(promptTokens = 10, completionTokens = 50))
@@ -145,6 +145,25 @@ StreamingAgentBuilder.create(bridge) {
 }
 ```
 
+### Strategy Definition (Required)
+
+`StreamingAgentBuilder` requires an app-defined strategy. Example:
+
+```kotlin
+import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
+import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.strategy
+import ai.koog.agents.core.dsl.extension.nodeLLMRequest
+import ai.koog.agents.core.dsl.extension.onAssistantMessage
+import tech.abstracty.agent.protocol.StreamBridge
+
+fun createChatStreamingStrategy(bridge: StreamBridge): AIAgentGraphStrategy<String, String> = strategy("chat") {
+    val nodeCallLLM by nodeLLMRequest("sendInput")
+    edge(nodeStart forwardTo nodeCallLLM)
+    edge(nodeCallLLM forwardTo nodeFinish onAssistantMessage { true })
+}
+```
+
 ### Web Search Tool
 
 ```kotlin
@@ -164,6 +183,22 @@ val searchTool = WebSearchTool(
     geolocation = "NL"
 )
 ```
+
+## Dev CLI (Strategy Playground)
+
+The repo ships a dev-only CLI to experiment with strategies and tools:
+
+```bash
+OPENAI_API_KEY=... ./gradlew devCli
+```
+
+Optional env vars:
+- `CLI_STRATEGY=plain|plain-stream|tools`
+- `SYSTEM_PROMPT=...`
+- `TOOL_DESCRIPTIONS_PATH=/path/to/tool_descriptions`
+- `RAG_TENANT_ID=tenant-id`
+- `QDRANT_HOST=localhost`
+- `QDRANT_GRPC_PORT=6334`
 
 ## Protocol Support
 
