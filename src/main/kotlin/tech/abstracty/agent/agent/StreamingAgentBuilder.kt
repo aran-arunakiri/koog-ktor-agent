@@ -1,6 +1,7 @@
 package tech.abstracty.agent.agent
 
 import ai.koog.agents.core.agent.AIAgent
+import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
@@ -45,8 +46,10 @@ class StreamingAgentBuilder(
     var apiKey: String = ""
     var systemPrompt: String = ""
     var model: LLModel = OpenAIModels.Chat.GPT4_1
+    var extraFeatures: (GraphAIAgent.FeatureContext.() -> Unit)? = null
 
     private val toolList = mutableListOf<Tool<*, *>>()
+    private val toolCallStack = ArrayDeque<String>()
 
     /**
      * Add tools to the agent.
@@ -70,16 +73,17 @@ class StreamingAgentBuilder(
             installFeatures = {
                 install(EventHandler) {
                     onToolCallStarting { ctx ->
-                        bridge.onToolCallStart(
-                            callId = "call_${ctx.tool.name}_${System.currentTimeMillis()}",
-                            toolName = ctx.tool.name
-                        )
+                        val callId = "call_${ctx.tool.name}_${System.currentTimeMillis()}"
+                        toolCallStack.addLast(callId)
+                        bridge.onToolCallStart(callId, ctx.tool.name)
                     }
                     onToolCallCompleted { ctx ->
-                        bridge.onToolCallResult(
-                            callId = "call_${ctx.tool.name}",
-                            result = ctx.result
-                        )
+                        val callId = if (toolCallStack.isNotEmpty()) {
+                            toolCallStack.removeLast()
+                        } else {
+                            "call_${ctx.tool.name}"
+                        }
+                        bridge.onToolCallResult(callId, ctx.result)
                     }
                     onAgentExecutionFailed {
                         bridge.onError(it.throwable.message ?: "Agent execution failed")
@@ -94,6 +98,7 @@ class StreamingAgentBuilder(
                         bridge.onError(it.throwable.message ?: "Node execution failed")
                     }
                 }
+                extraFeatures?.invoke(this)
             }
         )
     }
