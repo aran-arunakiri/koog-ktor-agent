@@ -98,6 +98,23 @@ private fun createPlainChatStrategy(): AIAgentGraphStrategy<String, String> = st
     edge(nodeCallLLM forwardTo nodeFinish onAssistantMessage { true })
 }
 
+private fun createPlainStreamingStrategy(bridge: StreamBridge): AIAgentGraphStrategy<String, String> = strategy("plain-stream") {
+    val nodeStream by node<String, Message.Response>("streamInput") { input ->
+        llm.writeSession {
+            streamLLMTurn(
+                onText = { delta -> bridge.onTextDelta(delta) },
+                onToolCall = { },
+                onEnd = { },
+            ) {
+                appendPrompt { user(input) }
+            }
+        }
+    }
+
+    edge(nodeStart forwardTo nodeStream)
+    edge(nodeStream forwardTo nodeFinish onAssistantMessage { true })
+}
+
 private fun loadRagTools(apiKey: String): List<Tool<*, *>> {
     val basePath = System.getenv("TOOL_DESCRIPTIONS_PATH") ?: return emptyList()
     val tenantId = System.getenv("RAG_TENANT_ID") ?: "default"
@@ -138,10 +155,16 @@ fun main() = runBlocking {
     if (ragTools.isEmpty()) {
         println("No RAG tools loaded. Set TOOL_DESCRIPTIONS_PATH and QDRANT_HOST/QDRANT_GRPC_PORT to enable.")
     }
+    val strategyMode = System.getenv("CLI_STRATEGY")
+        ?: if (ragTools.isEmpty()) "plain-stream" else "tools"
     val agent = StreamingAgentBuilder.create(bridge) {
         this.apiKey = apiKey
         this.systemPrompt = systemPrompt
-        strategy = if (ragTools.isEmpty()) createPlainChatStrategy() else createCliStrategy(bridge)
+        strategy = when (strategyMode.lowercase()) {
+            "plain" -> createPlainChatStrategy()
+            "plain-stream" -> createPlainStreamingStrategy(bridge)
+            else -> createCliStrategy(bridge)
+        }
         tools {
             ragTools.forEach { +it }
         }
