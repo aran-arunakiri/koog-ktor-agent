@@ -125,7 +125,8 @@ class AssistantUIBridge(
     private fun flushSources() {
         if (pendingSources.isEmpty()) return
 
-        pendingSources.forEach { src ->
+        // Deduplicate by URL to avoid showing the same source multiple times
+        pendingSources.distinctBy { it.url }.forEach { src ->
             writer.source(
                 id = src.id,
                 url = src.url,
