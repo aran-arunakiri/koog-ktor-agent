@@ -30,17 +30,17 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
     onToolCall: suspend (Message.Tool.Call) -> Unit,
     onEnd: suspend (StreamFrame.End?) -> Unit,
     buildInitial: AIAgentLLMWriteSession.() -> Unit,
-): Message.Response {
+): List<Message.Response> {
     buildInitial()
 
     val frames = requestLLMStreaming()
     val full = StringBuilder()
-    var seenToolCall: Message.Tool.Call? = null
+    val toolCalls = mutableListOf<Message.Tool.Call>()
     var lastEnd: StreamFrame.End? = null
 
     frames.collect { frame ->
         when (frame) {
-            is StreamFrame.Append -> if (frame.text.isNotEmpty() && seenToolCall == null) {
+            is StreamFrame.Append -> if (frame.text.isNotEmpty() && toolCalls.isEmpty()) {
                 full.append(frame.text)
                 onText(frame.text)
             }
@@ -59,7 +59,7 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
                     metaInfo = ResponseMetaInfo.Empty
                 )
 
-                seenToolCall = call
+                toolCalls.add(call)
                 onToolCall(call)
             }
 
@@ -70,12 +70,16 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
         }
     }
 
-    return seenToolCall
-        ?: Message.Assistant(
-            content = full.toString(),
-            metaInfo = lastEnd?.metaInfo ?: ResponseMetaInfo.Empty,
-            finishReason = lastEnd?.finishReason
+    // Return all tool calls (for parallel execution) or assistant message
+    return toolCalls.ifEmpty {
+        listOf(
+            Message.Assistant(
+                content = full.toString(),
+                metaInfo = lastEnd?.metaInfo ?: ResponseMetaInfo.Empty,
+                finishReason = lastEnd?.finishReason
+            )
         )
+    }
 }
 
 /**
