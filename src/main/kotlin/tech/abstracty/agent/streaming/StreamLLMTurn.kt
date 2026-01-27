@@ -87,6 +87,19 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
 }
 
 /**
+ * Non-streaming helper that returns List<Message.Response>.
+ * Use this when you need multiple responses but don't need to stream to user.
+ */
+suspend fun AIAgentLLMWriteSession.requestLLMMultiple(
+    buildPrompt: AIAgentLLMWriteSession.() -> Unit,
+): List<Message.Response> = streamLLMTurn(
+    onText = { },
+    onToolCall = { },
+    onEnd = { },
+    buildInitial = buildPrompt
+)
+
+/**
  * Simplified streaming helper that just collects text.
  */
 suspend fun AIAgentLLMWriteSession.streamText(
