@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "tech.abstracty"
-version = "0.2.13"
+version = "0.2.14"
 
 repositories {
     mavenCentral()
@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
     // Koog
-    api("ai.koog:koog-ktor:0.5.4")
+    api("ai.koog:koog-ktor:0.6.0")
 
     // Ktor Server
     api("io.ktor:ktor-server-core:3.2.3")

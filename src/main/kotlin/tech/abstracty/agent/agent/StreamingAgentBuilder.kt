@@ -65,29 +65,29 @@ class StreamingAgentBuilder(
             installFeatures = {
                 install(EventHandler) {
                     onToolCallStarting { ctx ->
-                        val callId = "call_${ctx.tool.name}_${System.currentTimeMillis()}"
+                        val callId = "call_${ctx.toolName}_${System.currentTimeMillis()}"
                         toolCallStack.addLast(callId)
-                        bridge.onToolCallStart(callId, ctx.tool.name)
+                        bridge.onToolCallStart(callId, ctx.toolName)
                     }
                     onToolCallCompleted { ctx ->
                         val callId = if (toolCallStack.isNotEmpty()) {
                             toolCallStack.removeLast()
                         } else {
-                            "call_${ctx.tool.name}"
+                            "call_${ctx.toolName}"
                         }
-                        bridge.onToolCallResult(callId, ctx.result)
+                        bridge.onToolCallResult(callId, ctx.toolResult.toString())
                     }
-                    onAgentExecutionFailed {
-                        bridge.onError(it.throwable.message ?: "Agent execution failed")
+                    onAgentExecutionFailed { ctx ->
+                        bridge.onError(ctx.throwable?.message ?: "Agent execution failed")
                     }
-                    onToolCallFailed {
-                        bridge.onError(it.throwable.message ?: "Tool call failed")
+                    onToolCallFailed { ctx ->
+                        bridge.onError(ctx.error?.message ?: "Tool call failed")
                     }
-                    onLLMStreamingFailed {
-                        bridge.onError(it.error.message ?: "LLM streaming failed")
+                    onLLMStreamingFailed { ctx ->
+                        bridge.onError(ctx.error?.message ?: "LLM streaming failed")
                     }
-                    onNodeExecutionFailed {
-                        bridge.onError(it.throwable.message ?: "Node execution failed")
+                    onNodeExecutionFailed { ctx ->
+                        bridge.onError(ctx.throwable?.message ?: "Node execution failed")
                     }
                 }
                 extraFeatures?.invoke(this)

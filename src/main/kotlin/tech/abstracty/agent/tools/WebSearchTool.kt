@@ -2,9 +2,6 @@ package tech.abstracty.agent.tools
 
 import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolArgs
-import ai.koog.agents.core.tools.ToolDescriptor
-import ai.koog.agents.core.tools.ToolParameterDescriptor
-import ai.koog.agents.core.tools.ToolParameterType
 import ai.koog.agents.core.tools.ToolResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -34,7 +31,13 @@ class WebSearchTool(
     private val cx: String,
     private val site: String? = null,
     private val geolocation: String = "NL"
-) : Tool<WebSearchTool.Args, WebSearchTool.Result>() {
+) : Tool<WebSearchTool.Args, WebSearchTool.Result>(
+    argsSerializer = Args.serializer(),
+    resultSerializer = Result.serializer(),
+    name = "WebSearchTool",
+    description = "Search the web via Google Programmable Search (JSON API), fixed to gl=NL and optionally scoped to a domain. " +
+        "Fetches and extracts HTML or PDF text for the top results."
+) {
 
     companion object {
         fun fromEnvironment(
@@ -74,26 +77,6 @@ class WebSearchTool(
     ) : ToolResult.JSONSerializable<Result> {
         override fun getSerializer(): KSerializer<Result> = serializer()
     }
-
-    override val argsSerializer = Args.serializer()
-    override val resultSerializer: KSerializer<Result> = Result.serializer()
-    override val description =
-        "Search the web via Google Programmable Search (JSON API), fixed to gl=NL and optionally scoped to a domain. " +
-            "Fetches and extracts HTML or PDF text for the top results."
-
-    override val descriptor = ToolDescriptor(
-        name = "WebSearchTool",
-        description = description,
-        requiredParameters = listOf(
-            ToolParameterDescriptor("query", "Query string", ToolParameterType.String)
-        ),
-        optionalParameters = listOf(
-            ToolParameterDescriptor("searchType", "Use 'image' for image search", ToolParameterType.String),
-            ToolParameterDescriptor("fetchContent", "Fetch and extract page text", ToolParameterType.Boolean),
-            ToolParameterDescriptor("maxFetch", "Number of results to fetch", ToolParameterType.Integer),
-            ToolParameterDescriptor("maxChars", "Max characters of fetched text", ToolParameterType.Integer)
-        )
-    )
 
     private val apiClient = ConnectionPoolManager.getKtorClient()
     private val javaHttpClient = ConnectionPoolManager.getHttpClient()
