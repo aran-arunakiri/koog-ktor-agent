@@ -1,5 +1,8 @@
 package tech.abstracty.agent.protocol.assistantui
 
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import tech.abstracty.agent.protocol.FinishReason
 import tech.abstracty.agent.protocol.StreamBridge
@@ -8,11 +11,8 @@ import tech.abstracty.agent.protocol.Usage
 /**
  * StreamBridge implementation for Assistant-UI DataStream protocol.
  *
- * Translates generic agent events into Assistant-UI frames:
- * - Text deltas → frame "0"
- * - Tool calls → frames "b" (begin), "a" (result)
- * - Sources → frame "h"
- * - Finish → frame "d"
+ * Thread-safe: all public methods are serialized via a coroutine [Mutex]
+ * so parallel tool calls never interleave frames on the underlying writer.
  *
  * Example usage:
  * ```kotlin
@@ -28,6 +28,7 @@ class AssistantUIBridge(
 ) : StreamBridge {
 
     private val writer = LineFramedWriter(out, json)
+    private val mutex = Mutex()
 
     private data class PendingSource(
         val id: String,
@@ -37,16 +38,16 @@ class AssistantUIBridge(
     )
 
     private val toolCallStack = ArrayDeque<String>()
-    private var toolCounter: Int = 0
+    private val toolCounter = AtomicInteger(0)
     private val pendingSources = mutableListOf<PendingSource>()
 
-    override suspend fun onTextDelta(delta: String) {
+    override suspend fun onTextDelta(delta: String) = mutex.withLock {
         if (delta.isNotEmpty()) {
             writer.text(delta)
         }
     }
 
-    override suspend fun onToolCallStart(callId: String, toolName: String, args: String?) {
+    override suspend fun onToolCallStart(callId: String, toolName: String, args: String?) = mutex.withLock {
         toolCallStack.addLast(callId)
         writer.toolBegin(
             callId = callId,
@@ -55,11 +56,11 @@ class AssistantUIBridge(
         )
     }
 
-    override suspend fun onToolCallArgsDelta(callId: String, argsDelta: String) {
+    override suspend fun onToolCallArgsDelta(callId: String, argsDelta: String) = mutex.withLock {
         writer.toolArgsDelta(callId, argsDelta)
     }
 
-    override suspend fun onToolCallResult(callId: String, result: Any?, isError: Boolean) {
+    override suspend fun onToolCallResult(callId: String, result: Any?, isError: Boolean) = mutex.withLock {
         val actualCallId = if (toolCallStack.isNotEmpty() && toolCallStack.last() == callId) {
             toolCallStack.removeLast()
         } else {
@@ -76,7 +77,7 @@ class AssistantUIBridge(
         )
     }
 
-    override suspend fun onSource(id: String, url: String, title: String?) {
+    override suspend fun onSource(id: String, url: String, title: String?) = mutex.withLock {
         val parentId = toolCallStack.lastOrNull() ?: "root"
         pendingSources += PendingSource(
             id = id,
@@ -86,7 +87,7 @@ class AssistantUIBridge(
         )
     }
 
-    override suspend fun onFinish(reason: FinishReason, usage: Usage?) {
+    override suspend fun onFinish(reason: FinishReason, usage: Usage?) = mutex.withLock {
         flushSources()
         writer.finishMessage(
             finish = reason.toAui(),
@@ -94,14 +95,14 @@ class AssistantUIBridge(
         )
     }
 
-    override suspend fun onError(message: String) {
+    override suspend fun onError(message: String) = mutex.withLock {
         writer.error(message)
     }
 
     /**
      * Add a source/citation that will be flushed at the end of the turn.
      */
-    fun addSource(id: String, url: String, title: String? = null, parentId: String? = null) {
+    suspend fun addSource(id: String, url: String, title: String? = null, parentId: String? = null) = mutex.withLock {
         pendingSources += PendingSource(
             id = id,
             url = url,
@@ -114,13 +115,13 @@ class AssistantUIBridge(
      * Generate a unique tool call ID.
      */
     fun generateToolCallId(toolName: String): String {
-        return "call_${toolName}_${toolCounter++}"
+        return "call_${toolName}_${toolCounter.getAndIncrement()}"
     }
 
     /**
      * Get the current tool call ID (the last one started).
      */
-    fun currentToolCallId(): String? = toolCallStack.lastOrNull()
+    suspend fun currentToolCallId(): String? = mutex.withLock { toolCallStack.lastOrNull() }
 
     private fun flushSources() {
         if (pendingSources.isEmpty()) return
