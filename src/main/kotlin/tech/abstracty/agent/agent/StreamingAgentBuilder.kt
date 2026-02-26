@@ -69,6 +69,7 @@ class StreamingAgentBuilder(
                     }
                     onToolCallCompleted { ctx ->
                         val callId = ctx.toolCallId ?: ctx.eventId
+                        println("[StreamingAgentBuilder] onToolCallCompleted: callId=$callId, toolName=${ctx.toolName}, resultLength=${ctx.toolResult?.length}")
                         bridge.onToolCallResult(callId, ctx.toolResult, isError = false)
                     }
                     onAgentExecutionFailed { ctx ->
