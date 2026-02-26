@@ -47,7 +47,7 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
 
             is StreamFrame.ToolCall -> {
                 val safeId = frame.id ?: UUID.randomUUID().toString()
-                // Don't append to prompt here - append all results at the end
+                // Collect tool calls - they'll be appended to prompt at the end using tool DSL
                 val call = Message.Tool.Call(
                     id = safeId,
                     tool = frame.name,
@@ -66,22 +66,38 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
         }
     }
 
-    // Build result list - either tool calls or assistant message
-    val results: List<Message.Response> = toolCalls.ifEmpty {
-        listOf(
-            Message.Assistant(
-                content = full.toString(),
-                metaInfo = lastEnd?.metaInfo ?: ResponseMetaInfo.Empty,
-                finishReason = lastEnd?.finishReason
-            )
+    // Build result and append to prompt
+    return if (toolCalls.isNotEmpty()) {
+        // Append tool calls using the tool DSL - this is required for OpenAI format
+        // The tool DSL properly creates Message.Tool.Call entries that get converted
+        // to OpenAI's assistant message with tool_calls array
+        appendPrompt {
+            tool { toolCalls.forEach { call(it.id!!, it.tool, it.content) } }
+        }
+        toolCalls
+    } else {
+        val assistantMessage = Message.Assistant(
+            content = full.toString(),
+            metaInfo = lastEnd?.metaInfo ?: ResponseMetaInfo.Empty,
+            finishReason = lastEnd?.finishReason
         )
+        appendPrompt { messages(listOf(assistantMessage)) }
+        listOf(assistantMessage)
     }
-
-    // Append ALL results to prompt at the end (following framework pattern)
-    appendPrompt { messages(results) }
-
-    return results
 }
+
+/**
+ * Non-streaming helper that returns List<Message.Response>.
+ * Use this when you need multiple responses but don't need to stream to user.
+ */
+suspend fun AIAgentLLMWriteSession.requestLLMMultiple(
+    buildPrompt: AIAgentLLMWriteSession.() -> Unit,
+): List<Message.Response> = streamLLMTurn(
+    onText = { },
+    onToolCall = { },
+    onEnd = { },
+    buildInitial = buildPrompt
+)
 
 /**
  * Simplified streaming helper that just collects text.

@@ -1,6 +1,5 @@
 package tech.abstracty.agent.protocol.assistantui
 
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
@@ -37,8 +36,6 @@ class AssistantUIBridge(
         val parentId: String,
     )
 
-    private val toolCallStack = ArrayDeque<String>()
-    private val toolCounter = AtomicInteger(0)
     private val pendingSources = mutableListOf<PendingSource>()
 
     override suspend fun onTextDelta(delta: String) = mutex.withLock {
@@ -48,12 +45,7 @@ class AssistantUIBridge(
     }
 
     override suspend fun onToolCallStart(callId: String, toolName: String, args: String?) = mutex.withLock {
-        toolCallStack.addLast(callId)
-        writer.toolBegin(
-            callId = callId,
-            toolName = toolName,
-            parentId = null,
-        )
+        writer.toolBegin(callId = callId, toolName = toolName, parentId = null)
     }
 
     override suspend fun onToolCallArgsDelta(callId: String, argsDelta: String) = mutex.withLock {
@@ -61,30 +53,16 @@ class AssistantUIBridge(
     }
 
     override suspend fun onToolCallResult(callId: String, result: Any?, isError: Boolean) = mutex.withLock {
-        val actualCallId = if (toolCallStack.isNotEmpty() && toolCallStack.last() == callId) {
-            toolCallStack.removeLast()
-        } else {
-            callId
-        }
-
-        val resultJson = serializeResult(result)
-
         writer.toolResult(
-            callId = actualCallId,
-            result = resultJson,
+            callId = callId,
+            result = serializeResult(result),
             artifact = null,
             isError = if (isError) true else null,
         )
     }
 
     override suspend fun onSource(id: String, url: String, title: String?) = mutex.withLock {
-        val parentId = toolCallStack.lastOrNull() ?: "root"
-        pendingSources += PendingSource(
-            id = id,
-            url = url,
-            title = title,
-            parentId = parentId,
-        )
+        pendingSources += PendingSource(id = id, url = url, title = title, parentId = "root")
     }
 
     override suspend fun onFinish(reason: FinishReason, usage: Usage?) = mutex.withLock {
@@ -103,25 +81,8 @@ class AssistantUIBridge(
      * Add a source/citation that will be flushed at the end of the turn.
      */
     suspend fun addSource(id: String, url: String, title: String? = null, parentId: String? = null) = mutex.withLock {
-        pendingSources += PendingSource(
-            id = id,
-            url = url,
-            title = title,
-            parentId = parentId ?: toolCallStack.lastOrNull() ?: "root",
-        )
+        pendingSources += PendingSource(id = id, url = url, title = title, parentId = parentId ?: "root")
     }
-
-    /**
-     * Generate a unique tool call ID.
-     */
-    fun generateToolCallId(toolName: String): String {
-        return "call_${toolName}_${toolCounter.getAndIncrement()}"
-    }
-
-    /**
-     * Get the current tool call ID (the last one started).
-     */
-    suspend fun currentToolCallId(): String? = mutex.withLock { toolCallStack.lastOrNull() }
 
     private fun flushSources() {
         if (pendingSources.isEmpty()) return

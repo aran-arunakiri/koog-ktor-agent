@@ -2,6 +2,7 @@ package tech.abstracty.agent.rag
 
 import io.qdrant.client.QdrantClient
 import io.qdrant.client.QdrantGrpcClient
+import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
 object QdrantClientPool {
@@ -12,6 +13,7 @@ object QdrantClientPool {
             QdrantClient(
                 QdrantGrpcClient
                     .newBuilder(host, port, false)
+                    .withTimeout(Duration.ofSeconds(30))
                     .build()
             )
         }

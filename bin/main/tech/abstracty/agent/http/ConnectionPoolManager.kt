@@ -12,18 +12,23 @@ import kotlinx.serialization.json.Json
 import java.net.http.HttpClient as JHttpClient
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 object ConnectionPoolManager {
     private val httpClients = ConcurrentHashMap<String, JHttpClient>()
     private val ktorClients = ConcurrentHashMap<String, HttpClient>()
+    private val executors = ConcurrentHashMap<String, ExecutorService>()
 
     fun getHttpClient(poolSize: Int = 10): JHttpClient {
         return httpClients.computeIfAbsent("pool-$poolSize") {
+            val executor = Executors.newFixedThreadPool(poolSize)
+            executors["pool-$poolSize"] = executor
             JHttpClient.newBuilder()
                 .version(JHttpClient.Version.HTTP_2)
                 .connectTimeout(Duration.ofSeconds(30))
-                .executor(Executors.newFixedThreadPool(poolSize))
+                .executor(executor)
                 .followRedirects(JHttpClient.Redirect.NORMAL)
                 .build()
         }
@@ -60,5 +65,29 @@ object ConnectionPoolManager {
                 }
             }
         }
+    }
+
+    fun shutdown() {
+        // Shutdown Ktor clients
+        ktorClients.values.forEach { client ->
+            try {
+                client.close()
+            } catch (_: Exception) {}
+        }
+        ktorClients.clear()
+
+        // Shutdown executor services for Java HttpClients
+        executors.values.forEach { executor ->
+            try {
+                executor.shutdown()
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executor.shutdownNow()
+                }
+            } catch (_: Exception) {
+                executor.shutdownNow()
+            }
+        }
+        executors.clear()
+        httpClients.clear()
     }
 }
