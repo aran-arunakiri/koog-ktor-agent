@@ -78,6 +78,14 @@ class AssistantUIBridge(
     }
 
     /**
+     * Emit arbitrary data via `2:` data frames.
+     * Data lands in `message.metadata.unstable_data` on the frontend.
+     */
+    suspend fun sendData(vararg items: JsonElement) = mutex.withLock {
+        writer.data(*items)
+    }
+
+    /**
      * Add a source/citation that will be flushed at the end of the turn.
      */
     suspend fun addSource(id: String, url: String, title: String? = null, parentId: String? = null) = mutex.withLock {
