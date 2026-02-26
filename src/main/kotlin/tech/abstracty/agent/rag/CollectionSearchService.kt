@@ -94,18 +94,7 @@ class CollectionSearchService(
     private fun filterResultsByScore(
         searchResults: List<Points.ScoredPoint>
     ): List<Points.ScoredPoint> {
-        val topScore = searchResults.firstOrNull()?.score ?: 0f
-
-        if (topScore < config.searchConfig.minScore) {
-            return emptyList()
-        }
-
-        val dynamicThreshold = maxOf(
-            config.searchConfig.minScore,
-            topScore * config.searchConfig.relativeScoreThreshold
-        )
-
-        return searchResults.filter { it.score >= dynamicThreshold }
+        return searchResults.filter { it.score >= config.searchConfig.minScore }
     }
 
     companion object {

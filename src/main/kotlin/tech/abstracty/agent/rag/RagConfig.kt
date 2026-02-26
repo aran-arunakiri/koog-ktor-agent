@@ -13,7 +13,6 @@ data class RagConfig(
 
 data class SearchConfig(
     val minScore: Float = 0.35f,
-    val relativeScoreThreshold: Float = 0.75f,
     val searchTimeoutSeconds: Long = 10
 )
 

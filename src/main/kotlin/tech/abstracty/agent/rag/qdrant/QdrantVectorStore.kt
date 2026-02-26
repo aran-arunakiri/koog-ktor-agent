@@ -18,7 +18,6 @@ data class QdrantCollectionConfig(
     val vectorSize: Int,
     val topK: Int = 5,
     val minScore: Float = 0.2f,
-    val relativeScoreThreshold: Float = 0.75f,
     val distance: Collections.Distance = Collections.Distance.Cosine
 )
 
@@ -124,8 +123,7 @@ class QdrantVectorStore(
 
         val filtered = filterByScore(
             results = rawResults,
-            minScore = minScoreOverride ?: config.minScore,
-            relative = config.relativeScoreThreshold
+            minScore = minScoreOverride ?: config.minScore
         )
 
         return filtered.map { sp ->
@@ -147,16 +145,9 @@ class QdrantVectorStore(
 
     private fun filterByScore(
         results: List<Points.ScoredPoint>,
-        minScore: Float,
-        relative: Float
+        minScore: Float
     ): List<Points.ScoredPoint> {
-        if (results.isEmpty()) return emptyList()
-
-        val topScore = results.first().score
-        if (topScore < minScore) return emptyList()
-
-        val dynamicThreshold = maxOf(minScore, topScore * relative)
-        return results.filter { it.score >= dynamicThreshold }
+        return results.filter { it.score >= minScore }
     }
 
     private fun pointIdFromString(id: String): Points.PointId {
