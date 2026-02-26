@@ -10,9 +10,6 @@ import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.executor.llms.all.simpleOpenAIExecutor
 import ai.koog.prompt.llm.LLModel
 import tech.abstracty.agent.protocol.StreamBridge
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * DSL builder for creating streaming AI agents.
@@ -43,8 +40,6 @@ class StreamingAgentBuilder(
     var extraFeatures: (GraphAIAgent.FeatureContext.() -> Unit)? = null
 
     private val toolList = mutableListOf<Tool<*, *>>()
-    private val callIdCounter = AtomicLong(0)
-    private val toolNameToCallIds = ConcurrentHashMap<String, ConcurrentLinkedDeque<String>>()
 
     /**
      * Add tools to the agent.
@@ -69,22 +64,19 @@ class StreamingAgentBuilder(
             installFeatures = {
                 install(EventHandler) {
                     onToolCallStarting { ctx ->
-                        val callId = "call_${ctx.toolName}_${callIdCounter.incrementAndGet()}"
-                        toolNameToCallIds
-                            .computeIfAbsent(ctx.toolName) { ConcurrentLinkedDeque() }
-                            .addLast(callId)
-                        bridge.onToolCallStart(callId, ctx.toolName)
+                        val callId = ctx.toolCallId ?: ctx.eventId
+                        bridge.onToolCallStart(callId, ctx.toolName, ctx.toolArgs.toString())
                     }
                     onToolCallCompleted { ctx ->
-                        val callId = toolNameToCallIds[ctx.toolName]?.pollFirst()
-                            ?: "call_${ctx.toolName}_orphan"
-                        bridge.onToolCallResult(callId, ctx.toolResult.toString())
+                        val callId = ctx.toolCallId ?: ctx.eventId
+                        bridge.onToolCallResult(callId, ctx.toolResult)
                     }
                     onAgentExecutionFailed { ctx ->
                         bridge.onError(ctx.throwable?.message ?: "Agent execution failed")
                     }
                     onToolCallFailed { ctx ->
-                        bridge.onError(ctx.error?.message ?: "Tool call failed")
+                        val callId = ctx.toolCallId ?: ctx.eventId
+                        bridge.onToolCallResult(callId, ctx.message, isError = true)
                     }
                     onLLMStreamingFailed { ctx ->
                         bridge.onError(ctx.error?.message ?: "LLM streaming failed")
