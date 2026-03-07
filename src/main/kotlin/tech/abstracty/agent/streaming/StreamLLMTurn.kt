@@ -40,12 +40,12 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
 
     frames.collect { frame ->
         when (frame) {
-            is StreamFrame.Append -> if (frame.text.isNotEmpty() && toolCalls.isEmpty()) {
+            is StreamFrame.TextDelta -> if (frame.text.isNotEmpty() && toolCalls.isEmpty()) {
                 full.append(frame.text)
                 onText(frame.text)
             }
 
-            is StreamFrame.ToolCall -> {
+            is StreamFrame.ToolCallComplete -> {
                 val safeId = frame.id ?: UUID.randomUUID().toString()
                 // Collect tool calls - they'll be appended to prompt at the end using tool DSL
                 val call = Message.Tool.Call(
@@ -63,6 +63,8 @@ suspend fun AIAgentLLMWriteSession.streamLLMTurn(
                 lastEnd = frame
                 onEnd(frame)
             }
+
+            else -> {}
         }
     }
 
@@ -113,7 +115,7 @@ suspend fun AIAgentLLMWriteSession.streamText(
 
     frames.collect { frame ->
         when (frame) {
-            is StreamFrame.Append -> if (frame.text.isNotEmpty()) {
+            is StreamFrame.TextDelta -> if (frame.text.isNotEmpty()) {
                 full.append(frame.text)
                 onText(frame.text)
             }

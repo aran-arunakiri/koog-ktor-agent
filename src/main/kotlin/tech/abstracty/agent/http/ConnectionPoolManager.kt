@@ -4,10 +4,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.http.HttpHeaders.ContentEncoding
+import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.serialization.kotlinx.json.json
-import io.netty.handler.codec.compression.StandardCompressionOptions.deflate
-import io.netty.handler.codec.compression.StandardCompressionOptions.gzip
 import kotlinx.serialization.json.Json
 import java.net.http.HttpClient as JHttpClient
 import java.time.Duration

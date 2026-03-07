@@ -13,13 +13,14 @@ repositories {
 
 dependencies {
     // Koog
-    api("ai.koog:koog-ktor:0.6.0")
+    api("ai.koog:koog-ktor:0.6.4")
 
     // Ktor Server
     api("io.ktor:ktor-server-core:3.2.3")
     implementation("io.ktor:ktor-client-core:3.2.3")
     implementation("io.ktor:ktor-client-cio:3.2.3")
     implementation("io.ktor:ktor-client-content-negotiation:3.2.3")
+    implementation("io.ktor:ktor-client-encoding:3.2.3")
     implementation("io.ktor:ktor-serialization-kotlinx-json:3.2.3")
 
     // Serialization
