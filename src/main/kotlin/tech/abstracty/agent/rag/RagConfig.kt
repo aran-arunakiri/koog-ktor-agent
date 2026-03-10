@@ -11,7 +11,6 @@ data class RagConfig(
     val connectionPoolConfig: ConnectionPoolConfig = ConnectionPoolConfig(),
     val azureEndpoint: String? = null,
     val azureApiKey: String? = null,
-    val azureApiVersion: String? = null,
 )
 
 data class SearchConfig(
