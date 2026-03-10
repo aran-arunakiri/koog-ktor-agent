@@ -25,11 +25,8 @@ class DefaultRagClientFactory(
         if (config.azureEndpoint != null && config.azureApiKey != null) {
             logger.debug("Creating Azure OpenAI client (v1 compat) for tenant: ${config.tenantId}")
             val endpoint = config.azureEndpoint.trimEnd('/')
-            val apiVersion = config.azureApiVersion ?: "2024-12-01-preview"
             val settings = OpenAIClientSettings(
                 baseUrl = "$endpoint/openai/v1/",
-                chatCompletionsPath = "chat/completions?api-version=$apiVersion",
-                embeddingsPath = "embeddings?api-version=$apiVersion",
             )
             OpenAILLMClient(config.azureApiKey, settings)
         } else {
