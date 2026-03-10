@@ -7,6 +7,7 @@ import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
+import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
 import ai.koog.prompt.executor.llms.all.simpleOpenAIExecutor
 import ai.koog.prompt.llm.LLModel
 import tech.abstracty.agent.protocol.StreamBridge
@@ -34,6 +35,7 @@ class StreamingAgentBuilder(
     private val bridge: StreamBridge
 ) {
     var apiKey: String = ""
+    var promptExecutor: SingleLLMPromptExecutor? = null
     var systemPrompt: String = ""
     var model: LLModel = OpenAIModels.Chat.GPT4_1
     var strategy: AIAgentGraphStrategy<String, String>? = null
@@ -49,14 +51,17 @@ class StreamingAgentBuilder(
     }
 
     fun build(): AIAgent<String, String> {
-        require(apiKey.isNotBlank()) { "API key is required" }
+        val executor = promptExecutor ?: run {
+            require(apiKey.isNotBlank()) { "API key or promptExecutor is required" }
+            simpleOpenAIExecutor(apiKey)
+        }
         val agentStrategy = requireNotNull(strategy) { "Agent strategy is required" }
 
         val tools = toolList
         val toolRegistry = ToolRegistry { tools.forEach { tool(it) } }
 
         return AIAgent(
-            promptExecutor = simpleOpenAIExecutor(apiKey),
+            promptExecutor = executor,
             systemPrompt = systemPrompt,
             llmModel = model,
             strategy = agentStrategy,

@@ -8,7 +8,10 @@ data class RagConfig(
     val embeddingModel: String = "text-embedding-3-small",
     val topK: Int = 3,
     val searchConfig: SearchConfig = SearchConfig(),
-    val connectionPoolConfig: ConnectionPoolConfig = ConnectionPoolConfig()
+    val connectionPoolConfig: ConnectionPoolConfig = ConnectionPoolConfig(),
+    val azureEndpoint: String? = null,
+    val azureApiKey: String? = null,
+    val azureApiVersion: String? = null,
 )
 
 data class SearchConfig(

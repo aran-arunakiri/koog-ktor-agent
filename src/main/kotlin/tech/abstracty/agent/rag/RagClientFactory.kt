@@ -1,6 +1,7 @@
 package tech.abstracty.agent.rag
 
 import ai.koog.embeddings.local.LLMEmbedder
+import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
 import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
 import io.qdrant.client.QdrantClient
 import io.qdrant.client.QdrantGrpcClient
@@ -21,8 +22,20 @@ class DefaultRagClientFactory(
     }
 
     private val openAIClient: OpenAILLMClient by lazy {
-        logger.debug("Creating OpenAI client for tenant: ${config.tenantId}")
-        OpenAILLMClient(config.openAIApiKey)
+        if (config.azureEndpoint != null && config.azureApiKey != null) {
+            logger.debug("Creating Azure OpenAI client (v1 compat) for tenant: ${config.tenantId}")
+            val endpoint = config.azureEndpoint.trimEnd('/')
+            val apiVersion = config.azureApiVersion ?: "2024-12-01-preview"
+            val settings = OpenAIClientSettings(
+                baseUrl = "$endpoint/openai/v1/",
+                chatCompletionsPath = "chat/completions?api-version=$apiVersion",
+                embeddingsPath = "embeddings?api-version=$apiVersion",
+            )
+            OpenAILLMClient(config.azureApiKey, settings)
+        } else {
+            logger.debug("Creating OpenAI client for tenant: ${config.tenantId}")
+            OpenAILLMClient(config.openAIApiKey)
+        }
     }
 
     private val qdrantClient: QdrantClient by lazy {
