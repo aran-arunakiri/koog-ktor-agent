@@ -27,6 +27,8 @@ class DefaultRagClientFactory(
             val endpoint = config.azureEndpoint.trimEnd('/')
             val settings = OpenAIClientSettings(
                 baseUrl = "$endpoint/openai/v1/",
+                chatCompletionsPath = "chat/completions",
+                embeddingsPath = "embeddings",
             )
             OpenAILLMClient(config.azureApiKey, settings)
         } else {
