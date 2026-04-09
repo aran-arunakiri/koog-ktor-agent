@@ -7,6 +7,7 @@ import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.prompt.executor.clients.openai.OpenAIModels
+import tech.abstracty.agent.feature.StreamingTracingFeature
 import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
 import ai.koog.prompt.executor.llms.all.simpleOpenAIExecutor
 import ai.koog.prompt.llm.LLModel
@@ -67,6 +68,7 @@ class StreamingAgentBuilder(
             strategy = agentStrategy,
             toolRegistry = toolRegistry,
             installFeatures = {
+                install(StreamingTracingFeature) {}
                 install(EventHandler) {
                     onToolCallStarting { ctx ->
                         val callId = ctx.toolCallId ?: ctx.eventId
