@@ -44,8 +44,18 @@ class AssistantUIBridge(
         }
     }
 
+    private val toolBeginsSent = mutableSetOf<String>()
+
     override suspend fun onToolCallStart(callId: String, toolName: String, args: String?) = mutex.withLock {
-        writer.toolBegin(callId = callId, toolName = toolName, parentId = null)
+        // Deduplicate: if toolBegin was already sent for this callId, skip the begin frame
+        // (StreamingAgentBuilder's onToolCallStarting may fire after a strategy already sent it)
+        if (toolBeginsSent.add(callId)) {
+            writer.toolBegin(callId = callId, toolName = toolName, parentId = null)
+        }
+        // If args were provided, stream them as a single args delta so tool UIs can render them
+        if (!args.isNullOrEmpty() && args != "null" && args != "{}") {
+            writer.toolArgsDelta(callId, args)
+        }
     }
 
     override suspend fun onToolCallArgsDelta(callId: String, argsDelta: String) = mutex.withLock {
