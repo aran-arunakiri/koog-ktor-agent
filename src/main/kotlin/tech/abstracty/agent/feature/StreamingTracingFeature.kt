@@ -29,8 +29,13 @@ object StreamingTracingFeature : AIAgentGraphFeature<StreamingTracingFeature.Con
     override fun createInitialConfig() = Config()
 
     override fun install(config: Config, pipeline: AIAgentGraphPipeline) {
-        // Track accumulated response text per eventId so we can pass it to onLLMCallCompleted
+        // Per-eventId state for the duration of a stream:
+        //  - text buffer accumulates TextDelta payloads
+        //  - end frame holds the terminal StreamFrame.End so we can read its usage metaInfo
+        //    when emitting onLLMCallCompleted (without it OTel sees 0 tokens because
+        //    ResponseMetaInfo.Empty has null input/output token counts).
         val responseBuffers = ConcurrentHashMap<String, StringBuilder>()
+        val endFrames = ConcurrentHashMap<String, ai.koog.prompt.streaming.StreamFrame.End>()
 
         pipeline.interceptLLMStreamingStarting(this) { ctx ->
             responseBuffers[ctx.eventId] = StringBuilder()
@@ -46,20 +51,27 @@ object StreamingTracingFeature : AIAgentGraphFeature<StreamingTracingFeature.Con
         }
 
         pipeline.interceptLLMStreamingFrameReceived(this) { ctx ->
-            val frame = ctx.streamFrame
-            // Accumulate text deltas so we can pass the full response on completion
-            if (frame is ai.koog.prompt.streaming.StreamFrame.TextDelta) {
-                responseBuffers[ctx.eventId]?.append(frame.text)
+            when (val frame = ctx.streamFrame) {
+                is ai.koog.prompt.streaming.StreamFrame.TextDelta ->
+                    responseBuffers[ctx.eventId]?.append(frame.text)
+                is ai.koog.prompt.streaming.StreamFrame.End ->
+                    endFrames[ctx.eventId] = frame
+                else -> {}
             }
         }
 
         pipeline.interceptLLMStreamingCompleted(this) { ctx ->
             val text = responseBuffers.remove(ctx.eventId)?.toString() ?: ""
+            // Use the End frame's metaInfo when available — OpenAI-family clients populate
+            // it from `stream_options.include_usage` automatically. Falls back to Empty when
+            // the upstream client doesn't emit a populated End frame.
+            val metaInfo = endFrames.remove(ctx.eventId)?.metaInfo
+                ?: ai.koog.prompt.message.ResponseMetaInfo.Empty
             val responses: List<ai.koog.prompt.message.Message.Response> = if (text.isNotEmpty()) {
                 listOf(
                     ai.koog.prompt.message.Message.Assistant(
                         content = text,
-                        metaInfo = ai.koog.prompt.message.ResponseMetaInfo.Empty,
+                        metaInfo = metaInfo,
                     )
                 )
             } else emptyList()
