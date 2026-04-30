@@ -101,6 +101,19 @@ class OpenAISseBridge(
     }
 
     /**
+     * Emit an SSE comment line so the response writer is flushed without adding any visible
+     * content to the stream. Per the EventSource spec, clients ignore lines starting with
+     * `:` — this is the standard SSE keepalive mechanism. Used during long server-side tool
+     * execution to keep the channel from idling out (and getting closed by Ktor / proxy /
+     * client).
+     */
+    override suspend fun keepAlive() {
+        if (finished) return
+        writer.write(": ka\n\n")
+        writer.flush()
+    }
+
+    /**
      * Call this to send the final [DONE] message.
      * Usually called automatically by onFinish.
      */

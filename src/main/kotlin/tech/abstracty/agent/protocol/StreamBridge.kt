@@ -72,6 +72,16 @@ interface StreamBridge {
      * @param message Error message to display
      */
     suspend fun onError(message: String)
+
+    /**
+     * Emit a protocol-level keepalive that flushes the underlying response writer without
+     * adding visible content to the stream. Useful during long-running server-side work
+     * (e.g. a tool call that takes 10-30s and produces no client-visible bridge events) to
+     * keep the response channel from being closed by an idle-timeout further down the chain.
+     *
+     * Default is a no-op so existing bridges don't have to implement it.
+     */
+    suspend fun keepAlive() {}
 }
 
 /**
