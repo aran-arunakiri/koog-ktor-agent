@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
     // Koog
-    api("ai.koog:koog-ktor:0.6.4")
+    api("ai.koog:koog-ktor:0.8.0")
 
     // Ktor Server
     api("io.ktor:ktor-server-core:3.2.3")

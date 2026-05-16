@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package tech.abstracty.agent.rag
 
 import ai.koog.embeddings.local.LLMEmbedder
