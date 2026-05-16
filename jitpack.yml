@@ -1,8 +1,8 @@
 jdk:
   - openjdk17
 
-# JitPack publishes the library jar; tests are dev-only (DevCli is a manual
-# CLI helper). Skip test compile + run on koog version bumps until DevCli
-# is migrated to the new koog 0.8 DSL.
+# JitPack publishes the library jar. Tests are dev-only (DevCli is a manual
+# CLI helper) so we still skip executing them, but compileTestKotlin must
+# pass so the dev CLI doesn't silently rot against new koog releases.
 install:
-  - ./gradlew publishToMavenLocal -x test -x compileTestKotlin
+  - ./gradlew publishToMavenLocal -x test

@@ -2,15 +2,15 @@ package tech.abstracty.agent.dev
 
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
-import ai.koog.agents.core.dsl.extension.nodeExecuteTool
-import ai.koog.agents.core.dsl.extension.nodeLLMRequest
-import ai.koog.agents.core.dsl.extension.onAssistantMessage
-import ai.koog.agents.core.dsl.extension.onToolCall
-import ai.koog.agents.core.environment.ReceivedToolResult
-import ai.koog.agents.core.environment.result
+import ai.koog.agents.core.dsl.extension.nodeExecuteMultipleToolsAndSendResults
+import ai.koog.agents.core.dsl.extension.nodeLLMRequestStreamingAndSendResults
+import ai.koog.agents.core.dsl.extension.onMultipleAssistantMessages
+import ai.koog.agents.core.dsl.extension.onMultipleToolCalls
 import ai.koog.agents.core.tools.Tool
-import ai.koog.prompt.message.Message
+import ai.koog.agents.features.eventHandler.feature.EventHandler
+import ai.koog.prompt.streaming.StreamFrame
 import kotlinx.coroutines.runBlocking
 import tech.abstracty.agent.agent.StreamingAgentBuilder
 import tech.abstracty.agent.rag.CollectionSearchService
@@ -22,7 +22,6 @@ import tech.abstracty.agent.rag.tools.FileBasedToolDescriptionRepository
 import tech.abstracty.agent.protocol.FinishReason
 import tech.abstracty.agent.protocol.StreamBridge
 import tech.abstracty.agent.protocol.Usage
-import tech.abstracty.agent.streaming.streamLLMTurn
 
 private class ConsoleBridge : StreamBridge {
     override suspend fun onTextDelta(delta: String) {
@@ -46,73 +45,126 @@ private class ConsoleBridge : StreamBridge {
     }
 }
 
-private fun createCliStrategy(bridge: StreamBridge): AIAgentGraphStrategy<String, String> = strategy("cli") {
-    val nodeCallLLM by nodeLLMRequest("sendInput")
-    val nodeExecuteTool by nodeExecuteTool("nodeExecuteTool")
-
-    val nodeSendToolResult by node<ReceivedToolResult, Message.Response>("nodeSendToolResult") { toolResult ->
+/**
+ * Tools-mode strategy.
+ *
+ * Graph: nodeStart → setupUserPrompt → streamLLM ⇄ executeTools → nodeFinish
+ *
+ * On koog 0.8 the streaming + tool-dispatch loop is expressed by composing
+ * `nodeLLMRequestStreamingAndSendResults` (streams the LLM turn and appends
+ * the full response set back to the session) with
+ * `nodeExecuteMultipleToolsAndSendResults` (runs every requested tool through
+ * the `ToolRegistry`, appends results, then re-asks the LLM). Tool-call and
+ * text-delta events reach the [StreamBridge] via the `EventHandler` feature
+ * — `StreamingAgentBuilder` already wires the tool-call triplet, and
+ * [installStreamingTextBridge] wires the text deltas.
+ *
+ * The pre-0.8 "nudge the LLM to call a tool when it tries plain text" loop
+ * is preserved by `nudgeForTools`: if the LLM streams only assistant text
+ * (no tool calls), we append a brief user-side reminder of available tool
+ * names and re-stream — same observable CLI behavior as before, just routed
+ * through edges instead of a manual `requestLLM()` call.
+ */
+private fun createCliStrategy(toolNames: List<String>): AIAgentGraphStrategy<String, String> = strategy("cli") {
+    val setupUserPrompt by node<String, String>("setupUserPrompt") { input ->
         llm.writeSession {
-            streamLLMTurn(
-                onText = { delta -> bridge.onTextDelta(delta) },
-                onToolCall = { },
-                onEnd = { },
-            ) {
-                appendPrompt {
-                    tool { result(toolResult) }
-                }
-            }
+            appendPrompt { user(input) }
         }
+        input
     }
 
-    val giveFeedbackToCallTools by node<String, Message.Response> { _ ->
+    val nudgeForTools by node<List<ai.koog.prompt.message.Message.Response>, String>("nudgeForTools") { _ ->
         llm.writeSession {
             appendPrompt {
                 user(
-                    "Don't chat with plain text! Call one of the available tools, instead: ${tools.joinToString(", ") {
-                        it.name
-                    }}"
+                    "Don't chat with plain text! Call one of the available tools, instead: " +
+                        toolNames.joinToString(", ")
                 )
             }
-            requestLLM()
         }
+        ""
     }
 
-    edge(nodeStart forwardTo nodeCallLLM)
-    edge(nodeCallLLM forwardTo nodeExecuteTool onToolCall { true })
-    edge(nodeCallLLM forwardTo giveFeedbackToCallTools onAssistantMessage { true })
+    val streamLLM by nodeLLMRequestStreamingAndSendResults<String>("streamLLM")
+    val executeTools by nodeExecuteMultipleToolsAndSendResults(
+        name = "executeTools",
+        parallelTools = false,
+    )
 
-    edge(giveFeedbackToCallTools forwardTo giveFeedbackToCallTools onAssistantMessage { true })
-    edge(giveFeedbackToCallTools forwardTo nodeExecuteTool onToolCall { true })
+    edge(nodeStart forwardTo setupUserPrompt)
+    edge(setupUserPrompt forwardTo streamLLM)
 
-    edge(nodeExecuteTool forwardTo nodeSendToolResult)
-    edge(nodeSendToolResult forwardTo nodeExecuteTool onToolCall { true })
-    edge(nodeSendToolResult forwardTo nodeFinish onAssistantMessage { true })
-    edge(nodeSendToolResult forwardTo nodeFinish onToolCall { tc -> tc.tool == "__exit__" }
-        transformed { "Chat finished" }
+    // LLM produced tool calls → run them, then loop in case of multi-turn tool use.
+    edge(streamLLM forwardTo executeTools onMultipleToolCalls { true })
+    edge(executeTools forwardTo executeTools onMultipleToolCalls { true })
+
+    // LLM produced plain text (no tools) → nudge it to use a tool and re-stream.
+    edge(streamLLM forwardTo nudgeForTools onMultipleAssistantMessages { true })
+    edge(nudgeForTools forwardTo streamLLM)
+
+    // Tools-then-assistant-text → finish (this is the natural happy path after
+    // a tool round-trip: the LLM weaves the result into a final assistant turn).
+    edge(
+        executeTools forwardTo nodeFinish
+            onMultipleAssistantMessages { true }
+            transformed { msgs -> msgs.lastOrNull()?.content ?: "" }
     )
 }
 
+/**
+ * Non-tools, single-shot strategy: nodeStart → streamLLM → nodeFinish.
+ * Used when no RAG tools are configured and CLI_STRATEGY=plain.
+ *
+ * `nodeLLMRequestStreamingAndSendResults` still streams tokens (the
+ * EventHandler bridge installed by [installStreamingTextBridge] writes them
+ * to stdout); since there are no tools the tool-call edge is never taken.
+ */
 private fun createPlainChatStrategy(): AIAgentGraphStrategy<String, String> = strategy("plain") {
-    val nodeCallLLM by nodeLLMRequest("sendInput")
-    edge(nodeStart forwardTo nodeCallLLM)
-    edge(nodeCallLLM forwardTo nodeFinish onAssistantMessage { true })
+    val setupUserPrompt by node<String, String>("setupUserPrompt") { input ->
+        llm.writeSession {
+            appendPrompt { user(input) }
+        }
+        input
+    }
+
+    val streamLLM by nodeLLMRequestStreamingAndSendResults<String>("streamLLM")
+
+    edge(nodeStart forwardTo setupUserPrompt)
+    edge(setupUserPrompt forwardTo streamLLM)
+    edge(
+        streamLLM forwardTo nodeFinish
+            onMultipleAssistantMessages { true }
+            transformed { msgs -> msgs.lastOrNull()?.content ?: "" }
+    )
 }
 
-private fun createPlainStreamingStrategy(bridge: StreamBridge): AIAgentGraphStrategy<String, String> = strategy("plain-stream") {
-    val nodeStream by node<String, Message.Response>("streamInput") { input ->
-        llm.writeSession {
-            streamLLMTurn(
-                onText = { delta -> bridge.onTextDelta(delta) },
-                onToolCall = { },
-                onEnd = { },
-            ) {
-                appendPrompt { user(input) }
+/**
+ * Plain streaming strategy. Functionally identical to [createPlainChatStrategy]
+ * on koog 0.8 — both stream via `nodeLLMRequestStreamingAndSendResults`. The
+ * old DSL distinguished "request" (non-streaming) from "streamLLMTurn"
+ * (streaming) at the node level; the 0.8 builtin always streams. Kept as a
+ * separate factory so CLI_STRATEGY=plain-stream still resolves.
+ */
+private fun createPlainStreamingStrategy(): AIAgentGraphStrategy<String, String> = createPlainChatStrategy()
+
+/**
+ * Install an EventHandler that forwards LLM streaming text deltas to the bridge.
+ *
+ * `StreamingAgentBuilder` already installs an EventHandler that handles
+ * tool-call boundaries + agent/node failures, but it does NOT subscribe to
+ * `onLLMStreamingFrameReceived`. This second EventHandler stacks on top via
+ * the builder's `extraFeatures` hook so the CLI keeps echoing tokens as they
+ * arrive — same UX as the pre-0.8 manual `streamLLMTurn(onText = ...)`.
+ */
+private fun installStreamingTextBridge(bridge: StreamBridge): ai.koog.agents.core.agent.GraphAIAgent.FeatureContext.() -> Unit = {
+    install(EventHandler) {
+        onLLMStreamingFrameReceived { ctx ->
+            val frame = ctx.streamFrame
+            if (frame is StreamFrame.TextDelta && frame.text.isNotEmpty()) {
+                bridge.onTextDelta(frame.text)
             }
         }
     }
-
-    edge(nodeStart forwardTo nodeStream)
-    edge(nodeStream forwardTo nodeFinish onAssistantMessage { true })
 }
 
 private fun loadRagTools(apiKey: String): List<Tool<*, *>> {
@@ -158,17 +210,22 @@ fun main() = runBlocking {
     }
     val strategyMode = System.getenv("CLI_STRATEGY")
         ?: if (ragTools.isEmpty()) "plain-stream" else "tools"
+    val toolNames = ragTools.map { it.name }
     val agent = StreamingAgentBuilder.create(bridge) {
         this.apiKey = apiKey
         this.systemPrompt = systemPrompt
         strategy = when (strategyMode.lowercase()) {
             "plain" -> createPlainChatStrategy()
-            "plain-stream" -> createPlainStreamingStrategy(bridge)
-            else -> createCliStrategy(bridge)
+            "plain-stream" -> createPlainStreamingStrategy()
+            else -> createCliStrategy(toolNames)
         }
         tools {
             ragTools.forEach { +it }
         }
+        // Layer a second EventHandler on top of the builder's built-in one so
+        // we still stream token deltas to stdout (the builder only wires
+        // tool-call + failure events).
+        extraFeatures = installStreamingTextBridge(bridge)
     }
 
     println("CLI ready. Type a message, or 'exit' to quit.")
